@@ -19,6 +19,6 @@ class StudentControllerTest {
 
         assertEquals(1, result.getId());
         assertEquals("Lakshmi", result.getName());
-        assertEquals("CSE", result.getDepartment());
+        assertEquals("CSE", result.getDepartment()) ;
     }
 }
