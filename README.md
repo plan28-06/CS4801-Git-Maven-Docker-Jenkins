@@ -1,4 +1,25 @@
-# CS4801-Git-Maven-Docker-Jenkins
+# End-to-End CI/CD Pipeline: Java + Maven + Git + Docker + Jenkins
+
+
+
+### Environment used in this guide
+
+-   Project/repository name: `gitmavenpractice`
+-   Git branch: `main`
+-   Jenkins installed directly on Windows
+-   Jenkins URL: `http://localhost:8080`
+-   Java version: 17
+-   Maven: installed and available as `mvn`
+-   Docker Desktop: installed and running
+-   Jenkins job name: `gitmavenpractice-pipeline`
+-   Host port for the container: `8081`
+-   Container port for the application: `8080`
+
+Replace `YOUR_USERNAME` with your GitHub username wherever shown. If
+your actual setup differs, adjust the relevant commands.
+
+------------------------------------------------------------------------
+
 
 
 ## 5. Create `pom.xml`
@@ -452,7 +473,7 @@ to commit. That is fine.
 Open:
 
 ``` text
-http://localhost:8082
+http://localhost:8080
 ```
 
 Sign in.
@@ -611,7 +632,7 @@ polling interval.
 
 ## 26. Enable the webhook trigger in Jenkins
 
-1.  Open Jenkins at `http://localhost:8082`.
+1.  Open Jenkins at `http://localhost:8080`.
 
 2.  Open `gitmavenpractice-pipeline`.
 
@@ -632,12 +653,12 @@ trigger.
 Your current Jenkins URL is:
 
 ``` text
-http://localhost:8082
+http://localhost:8080
 ```
 
 GitHub's servers cannot reach your computer through `localhost`. For
 this local lab, use a public HTTPS tunnel such as ngrok to forward
-requests to port 8082.
+requests to port 8080.
 
 Keep Jenkins authentication enabled. A public tunnel makes the Jenkins
 endpoint reachable from outside your computer. Use it only while testing
@@ -672,17 +693,17 @@ screenshots.
 
 ## 30. Start the tunnel
 
-Ensure Jenkins is running at `http://localhost:8082`. Then run:
+Ensure Jenkins is running at `http://localhost:8080`. Then run:
 
 ``` powershell
-.\ngrok.exe http 8082
+.\ngrok.exe http 8080
 ```
 
 Keep the PowerShell window open. ngrok should show a forwarding URL
 similar to:
 
 ``` text
-Forwarding  https://example-123.ngrok-free.app -> http://localhost:8082
+Forwarding  https://example-123.ngrok-free.app -> http://localhost:8080
 ```
 
 Use the actual HTTPS URL displayed in your terminal. Do not copy the
@@ -762,7 +783,7 @@ delivered and accepted.
 **GitHub delivery times out or fails** - Make sure ngrok is still
 running. - Confirm the payload URL uses the current HTTPS forwarding
 URL. - Check that `/github-webhook/` is included. - Confirm Jenkins is
-reachable locally on port 8082.
+reachable locally on port 8080.
 
 **GitHub delivery succeeds but no build starts** - Confirm **GitHub hook
 trigger for GITScm polling** is checked. - Confirm the Jenkins job
@@ -776,5 +797,5 @@ have changed. Update the GitHub webhook to the current URL.
 A webhook only triggers the pipeline. Maven, Docker, ports, and
 application errors can still cause the resulting build to fail.
 
-------------------------------------------------------------------------
 
+#
