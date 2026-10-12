@@ -1,30 +1,40 @@
-# End-to-End CI/CD Pipeline: Java + Maven + Git + Docker + Jenkins
+# End-to-End CI/CD Pipeline: Java 25 + Maven + Git + Docker + Jenkins
 
+This guide assumes the following setup:
 
-
-### Environment used in this guide
-
--   Project/repository name: `gitmavenpractice`
+-   GitHub repository: `gitmavenpractice`
 -   Git branch: `main`
--   Jenkins installed directly on Windows
+-   Windows 11
+-   Java 25 installed
+-   Apache Maven 3.10.0 installed
+-   Jenkins installed directly on Windows and running on port `8080`
 -   Jenkins URL: `http://localhost:8080`
--   Java version: 17
--   Maven: installed and available as `mvn`
--   Docker Desktop: installed and running
+-   Docker Desktop installed and running
 -   Jenkins job name: `gitmavenpractice-pipeline`
--   Host port for the container: `8081`
--   Container port for the application: `8080`
+-   Java application listens on port `8080` inside its container
+-   Host port `8081` maps to container port `8080`
 
-Replace `YOUR_USERNAME` with your GitHub username wherever shown. If
-your actual setup differs, adjust the relevant commands.
+Replace `YOUR_USERNAME` with your GitHub username. Use your actual local
+project path when running commands.
 
-------------------------------------------------------------------------
+### Port summary
+
+  Component                            Port
+  ---------------------------------- ------
+  Jenkins on Windows                   8080
+  Java application inside Docker       8080
+  Java application on Windows host     8081
+  ngrok forwarding target              8080
+
+Jenkins and the Java application can both use port 8080 because the
+application listens on port 8080 inside the container, while Docker
+publishes it on host port 8081.
 
 
 
-## 5. Create `pom.xml`
+## 6. Create `pom.xml`
 
-Create a file named `pom.xml` in the project root. Paste and save:
+Create `pom.xml` in the project root and paste:
 
 ``` xml
 <project xmlns="http://maven.apache.org/POM/4.0.0"
@@ -39,7 +49,7 @@ Create a file named `pom.xml` in the project root. Paste and save:
     <version>1.0-SNAPSHOT</version>
 
     <properties>
-        <maven.compiler.release>17</maven.compiler.release>
+        <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
@@ -72,12 +82,12 @@ Create a file named `pom.xml` in the project root. Paste and save:
 ### What does `pom.xml` do?
 
 -   `groupId`, `artifactId`, and `version` identify the Maven project.
--   `maven.compiler.release` selects Java 17 language/API compatibility.
--   JUnit Jupiter is used for the unit test.
--   Maven Compiler Plugin compiles Java code.
--   Maven Surefire Plugin runs tests.
+-   `maven.compiler.release` tells Maven to compile for Java 25.
+-   JUnit Jupiter provides the unit-testing framework.
+-   Maven Compiler Plugin compiles the Java source.
+-   Maven Surefire Plugin executes the unit tests.
 
-Validate the project:
+Validate the configuration:
 
 ``` powershell
 mvn validate
@@ -85,7 +95,12 @@ mvn validate
 
 Expected result: `BUILD SUCCESS`.
 
-## 6. Create `App.java`
+If Maven reports that release 25 is unsupported, verify the Java version
+Maven actually uses with `mvn -version`. If Maven is using Java 25 but
+the compiler plugin still reports a compatibility problem, update the
+Maven Compiler Plugin to a version that supports Java 25.
+
+## 7. Create `App.java`
 
 Create this file:
 
@@ -121,11 +136,11 @@ public class App {
 }
 ```
 
-This is intentionally small. It starts a basic HTTP server and exposes
-`/status`, which returns a text response. It also has a method that can
-be tested by JUnit.
+This small application starts an HTTP server and exposes `/status`. The
+endpoint returns a text response. The `getStatus()` method is used by
+the unit test.
 
-## 7. Create `AppTest.java`
+## 8. Create `AppTest.java`
 
 Create:
 
@@ -147,9 +162,9 @@ public class AppTest {
 }
 ```
 
-This verifies that `getStatus()` returns the expected value.
+This test checks that `getStatus()` returns the expected string.
 
-## 8. Build and test with Maven
+## 9. Build and test with Maven
 
 From the project root, run:
 
@@ -162,7 +177,7 @@ Maven will:
 1.  `clean` --- remove previous build output.
 2.  `compile` --- compile the Java source.
 3.  `test` --- run the JUnit test.
-4.  `package` --- generate a JAR.
+4.  `package` --- generate the JAR.
 
 Look for output similar to:
 
@@ -171,25 +186,25 @@ Tests run: 1, Failures: 0, Errors: 0, Skipped: 0
 BUILD SUCCESS
 ```
 
-The JAR should be generated at:
+The generated JAR should be at:
 
 ``` text
 target/gitmavenpractice-1.0-SNAPSHOT.jar
 ```
 
-Do not proceed until the Maven build succeeds.
+Do not proceed until this command succeeds.
 
 ------------------------------------------------------------------------
 
 # Part C --- Docker image and container
 
-## 9. Create the `Dockerfile`
+## 10. Create the `Dockerfile`
 
-Create a file named exactly `Dockerfile` in the project root (no `.txt`
-extension).
+Create a file named exactly `Dockerfile` in the project root. Do not add
+a `.txt` extension.
 
 ``` dockerfile
-FROM eclipse-temurin:17-jre
+FROM eclipse-temurin:25-jre
 
 WORKDIR /app
 
@@ -202,15 +217,16 @@ CMD ["java", "-cp", "app.jar", "com.example.studentmanagement.App"]
 
 ### What does this Dockerfile do?
 
--   `FROM` selects a Java 17 runtime base image.
--   `WORKDIR` sets the working directory inside the image.
--   `COPY` copies the Maven-built JAR into the image.
--   `EXPOSE 8080` documents the application port.
--   `CMD` starts the Java application when a container runs.
+-   `FROM` selects a Java 25 runtime image.
+-   `WORKDIR` sets the working directory inside the container image.
+-   `COPY` copies the JAR produced by Maven into the image.
+-   `EXPOSE 8080` documents the application's listening port.
+-   `CMD` starts the Java application when the container runs.
 
-The Dockerfile expects Maven to have generated the JAR first.
+The Docker image is built from the JAR, so Maven must run successfully
+before `docker build`.
 
-## 10. Create `.gitignore`
+## 11. Create `.gitignore`
 
 Create `.gitignore` in the project root:
 
@@ -221,12 +237,12 @@ target/
 *.iml
 ```
 
-This excludes generated build output and local IDE settings from Git.
-Maven will regenerate `target/` when needed.
+This excludes generated Maven output and local IDE settings from Git.
+Maven recreates `target/` when needed.
 
-## 11. Build the Docker image locally
+## 12. Build the Docker image
 
-Make sure Docker Desktop is running. From the project root, run:
+Make sure Docker Desktop is running. From the project root, execute:
 
 ``` powershell
 docker build -t gitmavenpractice:1.0 .
@@ -234,9 +250,9 @@ docker build -t gitmavenpractice:1.0 .
 
 Explanation:
 
--   `docker build`: builds an image.
--   `-t gitmavenpractice:1.0`: names and tags the image.
--   `.`: sends the current directory as the build context.
+-   `docker build` builds an image.
+-   `-t gitmavenpractice:1.0` names and tags the image.
+-   `.` uses the current directory as the build context.
 
 List the image:
 
@@ -244,9 +260,9 @@ List the image:
 docker images
 ```
 
-Look for `gitmavenpractice` with tag `1.0`.
+Look for image `gitmavenpractice` with tag `1.0`.
 
-## 12. Run the container
+## 13. Run the container
 
 Run:
 
@@ -256,12 +272,12 @@ docker run -d --name student-app -p 8081:8080 gitmavenpractice:1.0
 
 Explanation:
 
--   `-d`: run in the background.
--   `--name student-app`: name the container.
--   `-p 8081:8080`: map host port 8081 to container port 8080.
--   `gitmavenpractice:1.0`: image to run.
+-   `-d` runs the container in the background.
+-   `--name student-app` gives the container a name.
+-   `-p 8081:8080` maps Windows host port 8081 to container port 8080.
+-   `gitmavenpractice:1.0` is the image to run.
 
-Verify:
+Verify the running container:
 
 ``` powershell
 docker ps
@@ -281,31 +297,32 @@ Application is working
 
 ### If the container name is already in use
 
-Stop and remove the old container:
+Remove the old container:
 
 ``` powershell
 docker rm -f student-app
 ```
 
-Then run the `docker run` command again.
+Then rerun the `docker run` command.
 
-### If port 8081 is already in use
+### If host port 8081 is already in use
 
-Use a different host port, such as:
+Use a different host port, for example:
 
 ``` powershell
 docker run -d --name student-app -p 8083:8080 gitmavenpractice:1.0
 ```
 
-Then browse to `http://localhost:8083/status`.
+Then test `http://localhost:8083/status`. If you change the host port,
+also change the Jenkinsfile deployment command later.
 
 ------------------------------------------------------------------------
 
 # Part D --- Git and GitHub
 
-## 13. Initialize Git
+## 14. Initialize Git and commit the project
 
-Make sure your terminal is in the `gitmavenpractice` root folder. Run:
+Ensure that your terminal is in the project root. Run:
 
 ``` powershell
 git init
@@ -314,26 +331,28 @@ git commit -m "Add Java Maven application and Docker setup"
 git branch -M main
 ```
 
-If Git asks you to configure your identity, set your name and email:
+If Git asks you to configure your identity, run:
 
 ``` powershell
 git config --global user.name "Your Name"
 git config --global user.email "you@example.com"
 ```
 
-Then retry the commit.
+Replace those values with your own name and email, then retry the
+commit.
 
-## 14. Connect to the GitHub repository
+## 15. Connect to GitHub
 
-The remote repository is named `gitmavenpractice`.
+The remote repository is called `gitmavenpractice`.
 
-Check whether a remote already exists:
+Check whether a remote is already configured:
 
 ``` powershell
 git remote -v
 ```
 
-If the correct GitHub URL is already listed, keep it. Otherwise add it:
+If the correct GitHub URL is already listed, keep it. Otherwise, add the
+remote:
 
 ``` powershell
 git remote add origin https://github.com/YOUR_USERNAME/gitmavenpractice.git
@@ -347,11 +366,11 @@ Push the project:
 git push -u origin main
 ```
 
-If GitHub rejects the push because the remote already has a README or
-other commits, do not use `git push --force` without checking the
-situation. Review the error first.
+If GitHub rejects the push because the remote already contains a README
+or other commits, do not force-push. Review the error and reconcile the
+histories first.
 
-## 15. Verify the repository
+## 16. Verify GitHub
 
 Open the repository on GitHub. The root should contain:
 
@@ -363,7 +382,7 @@ pom.xml
 src/
 ```
 
-Make a meaningful commit whenever you change project files. For example:
+When you change files later, commit and push them:
 
 ``` powershell
 git add .
@@ -375,11 +394,11 @@ git push origin main
 
 # Part E --- Create the Jenkins pipeline
 
-## 16. Create `Jenkinsfile`
+## 17. Create `Jenkinsfile`
 
 Create a file named exactly `Jenkinsfile` in the project root.
 
-Use this Windows-oriented declarative pipeline:
+Paste this Windows-oriented declarative pipeline:
 
 ``` groovy
 pipeline {
@@ -425,33 +444,29 @@ pipeline {
 
 ### How the pipeline works
 
-1.  **Checkout** --- gets the source code from the Git repository
-    configured in the Jenkins job.
+1.  **Checkout** --- checks out the repository configured in the Jenkins
+    job.
 2.  **Build and Test** --- runs Maven compilation, tests, and packaging.
-3.  **Build Docker Image** --- creates the image using the JAR produced
-    by Maven.
-4.  **Deploy** --- removes an existing container if present, then runs
-    the new container.
+3.  **Build Docker Image** --- builds an image from the JAR produced by
+    Maven.
+4.  **Deploy** --- removes the old container if present and starts a
+    replacement.
 
-The cleanup command is written to tolerate a missing container. The
-subsequent Docker run still fails if Docker is unavailable or the port
+The cleanup command tolerates a missing container. The `docker run`
+command will still fail if Docker is unavailable or if the host port
 cannot be bound.
 
-### Important Windows/Jenkins configuration
+### Important Windows/Jenkins detail
 
-The pipeline uses `bat` commands. It assumes that the Jenkins agent is
-Windows and that the Windows account running Jenkins can access:
+The `bat` step is for a Windows Jenkins agent. The Windows account
+running Jenkins must be able to access Git, Maven, and Docker. A command
+working in your personal PowerShell session does not guarantee that it
+will work under the Jenkins service account.
 
--   `git`
--   `mvn`
--   `docker`
+If Jenkins reports that `mvn` or `docker` is not recognized, inspect the
+service account and its `PATH`.
 
-A tool working in your personal terminal does not guarantee that it is
-on the Jenkins service account's `PATH`. If Jenkins reports that `mvn`
-or `docker` is not recognized, check the Jenkins service account and
-system environment variables.
-
-## 17. Commit and push the Jenkinsfile
+## 18. Commit and push the Jenkinsfile
 
 Run:
 
@@ -461,14 +476,14 @@ git commit -m "Add Jenkins CI/CD pipeline"
 git push origin main
 ```
 
-If you already committed the file, Git may report that there is nothing
-to commit. That is fine.
+If the Jenkinsfile was already committed, Git may report that there is
+nothing to commit.
 
 ------------------------------------------------------------------------
 
-# Part F --- Configure the Jenkins job
+# Part F --- Configure Jenkins on port 8080
 
-## 18. Open Jenkins
+## 19. Open Jenkins
 
 Open:
 
@@ -478,11 +493,11 @@ http://localhost:8080
 
 Sign in.
 
-## 19. Create the Pipeline job
+## 20. Create the Pipeline job
 
 1.  Click **New Item**.
 
-2.  Enter:
+2.  Enter the job name:
 
     ``` text
     gitmavenpractice-pipeline
@@ -492,10 +507,9 @@ Sign in.
 
 4.  Click **OK**.
 
-## 20. Configure the job to fetch from GitHub
+## 21. Configure the job to fetch from GitHub
 
-Scroll to the **Pipeline** section near the bottom of the configuration
-page.
+Scroll to the **Pipeline** section.
 
 Set:
 
@@ -521,16 +535,17 @@ Set:
     Jenkinsfile
     ```
 
-For a public repository, read access usually needs no credentials. For a
-private repository, configure suitable Git credentials in Jenkins.
+For a public repository, credentials are usually not needed for
+read-only checkout. For a private repository, configure appropriate Git
+credentials in Jenkins.
 
 Click **Save**.
 
-## 21. Run the first build
+## 22. Run the first Jenkins build
 
 1.  Open `gitmavenpractice-pipeline`.
 2.  Click **Build Now**.
-3.  Click the build number in **Build History**.
+3.  Select the build number under **Build History**.
 4.  Open **Console Output**.
 5.  Inspect the stage view.
 
@@ -549,22 +564,23 @@ Verify the application at:
 http://localhost:8081/status
 ```
 
-The Jenkins job uses port 8081 on the host, while the Java server
-listens on port 8080 inside the container.
+Jenkins runs on Windows host port 8080, while the Java application is
+published on host port 8081 and listens on port 8080 inside the
+container.
 
 ------------------------------------------------------------------------
 
 # Part G --- Automatically trigger builds with Poll SCM
 
-## 22. What Poll SCM does
+## 23. What Poll SCM does
 
-Poll SCM makes Jenkins periodically check the configured Git repository.
-If it detects new commits, Jenkins schedules a build. If there are no
-relevant changes, it normally does not start a new build.
+Poll SCM makes Jenkins check the configured Git repository periodically.
+When Jenkins detects a relevant new commit, it schedules a build. If
+there are no new changes, it normally does not start a build.
 
-## 23. Configure Poll SCM
+## 24. Configure Poll SCM
 
-1.  Open Jenkins.
+1.  Open Jenkins at `http://localhost:8080`.
 
 2.  Open `gitmavenpractice-pipeline`.
 
@@ -583,9 +599,9 @@ relevant changes, it normally does not start a new build.
 7.  Click **Save**.
 
 This checks once per minute. Standard Jenkins cron-style Poll SCM
-scheduling does not support a 30-second interval.
+schedules do not support a 30-second interval.
 
-The five cron fields are:
+The five fields are:
 
 ``` text
 MINUTE HOUR DAY-OF-MONTH MONTH DAY-OF-WEEK
@@ -593,10 +609,10 @@ MINUTE HOUR DAY-OF-MONTH MONTH DAY-OF-WEEK
 
 `* * * * *` means every minute.
 
-## 24. Test Poll SCM
+## 25. Test Poll SCM
 
 Make a small change to a tracked file, such as the response string in
-`App.java`. Then run:
+`App.java`. Save the file, then run:
 
 ``` powershell
 git add .
@@ -605,7 +621,7 @@ git push origin main
 ```
 
 Wait for the next poll and inspect Jenkins **Build History**. Allow a
-couple of minutes for the scheduled poll and build to occur.
+couple of minutes for the poll and build to occur.
 
 Expected result: a new build starts without clicking **Build Now**.
 
@@ -615,22 +631,22 @@ Expected result: a new build starts without clicking **Build Now**.
 -   Confirm the repository URL and branch are correct.
 -   Confirm the commit was pushed to GitHub.
 -   Check Jenkins logs for Git or credential errors.
--   Ensure the job is configured as **Pipeline script from SCM**.
+-   Ensure the job uses **Pipeline script from SCM**.
 
 ------------------------------------------------------------------------
 
 # Part H --- Automatically trigger builds with a GitHub webhook
 
-## 25. What a webhook does
+## 26. What a webhook does
 
 A webhook is event-driven. After a push, GitHub sends a request to
 Jenkins. If Jenkins receives and accepts the event, it checks the
 repository and can schedule a build.
 
-Unlike Poll SCM, a webhook does not need Jenkins to wait for the next
+Unlike Poll SCM, a webhook does not require Jenkins to wait for the next
 polling interval.
 
-## 26. Enable the webhook trigger in Jenkins
+## 27. Enable the webhook trigger in Jenkins
 
 1.  Open Jenkins at `http://localhost:8080`.
 
@@ -648,26 +664,25 @@ You can leave Poll SCM enabled while testing the webhook. Once the
 webhook works, disable Poll SCM if you want the webhook to be your only
 trigger.
 
-## 27. Why a local Jenkins server needs a tunnel
+## 28. Why local Jenkins needs a tunnel
 
-Your current Jenkins URL is:
+Your Jenkins URL is:
 
 ``` text
 http://localhost:8080
 ```
 
 GitHub's servers cannot reach your computer through `localhost`. For
-this local lab, use a public HTTPS tunnel such as ngrok to forward
-requests to port 8080.
+this local lab, you can use ngrok to create a public HTTPS tunnel to
+local port 8080.
 
-Keep Jenkins authentication enabled. A public tunnel makes the Jenkins
-endpoint reachable from outside your computer. Use it only while testing
-and stop it afterward.
+Keep Jenkins authentication enabled. A public tunnel makes Jenkins
+reachable from outside your computer. Use it only while testing and stop
+it afterward.
 
-## 28. Check ngrok on Windows
+## 29. Check ngrok on Windows
 
-Open PowerShell. If ngrok is already installed in
-`C:\Program Files\ngrok`, run:
+Open PowerShell. If ngrok is installed in `C:\Program Files\ngrok`, run:
 
 ``` powershell
 cd "C:\Program Files\ngrok"
@@ -675,10 +690,10 @@ cd "C:\Program Files\ngrok"
 ```
 
 If it is installed elsewhere, use that path. If it is not installed,
-obtain it from the official ngrok site and follow its Windows
+obtain it from the official ngrok website and follow its Windows
 installation instructions.
 
-## 29. Configure the ngrok token
+## 30. Configure the ngrok authentication token
 
 1.  Sign in to your ngrok account.
 2.  Open its dashboard and find your authentication token.
@@ -691,7 +706,7 @@ installation instructions.
 Keep the token private. Do not put it in GitHub, the Jenkinsfile, or
 screenshots.
 
-## 30. Start the tunnel
+## 31. Start the tunnel
 
 Ensure Jenkins is running at `http://localhost:8080`. Then run:
 
@@ -706,22 +721,22 @@ similar to:
 Forwarding  https://example-123.ngrok-free.app -> http://localhost:8080
 ```
 
-Use the actual HTTPS URL displayed in your terminal. Do not copy the
-example literally. A temporary URL may change after you restart ngrok.
+Use the actual HTTPS URL shown by ngrok. Do not copy the example
+literally. A temporary URL may change after ngrok restarts.
 
 If ngrok reports an authentication error such as `ERR_NGROK_4018`, check
 your token and account setup.
 
-## 31. Add the webhook in GitHub
+## 32. Add the webhook in GitHub
 
 1.  Open the GitHub repository `gitmavenpractice`.
 2.  Go to **Settings → Webhooks**.
 3.  Click **Add webhook**.
-4.  Fill in these values.
+4.  Fill in the following fields.
 
 ### Payload URL
 
-Use the real ngrok URL followed by `/github-webhook/`.
+Use your real ngrok HTTPS URL followed by `/github-webhook/`.
 
 Example only:
 
@@ -729,8 +744,8 @@ Example only:
 https://example-123.ngrok-free.app/github-webhook/
 ```
 
-The URL must use the actual forwarding address and include
-`/github-webhook/`.
+The actual URL must use your current ngrok forwarding address and
+include `/github-webhook/`.
 
 ### Content type
 
@@ -742,8 +757,8 @@ application/json
 
 ### Secret
 
-For a basic temporary lab, you can leave this blank. A more secure setup
-can use a webhook secret if the integration is configured to validate
+For a basic temporary lab, you can leave this blank. For a more secure
+setup, use a webhook secret and configure the integration to validate
 it.
 
 ### Events
@@ -752,14 +767,14 @@ Select **Just the push event**.
 
 Ensure **Active** is checked, then click **Add webhook**.
 
-GitHub may send an initial ping event. Use a push event to test whether
-the Jenkins pipeline actually starts.
+GitHub may send an initial ping event. Use a push event to verify that
+the Jenkins pipeline starts.
 
-## 32. Test the webhook
+## 33. Test the webhook
 
 1.  Open **Settings → Webhooks** in GitHub.
 
-2.  Select the webhook.
+2.  Select your webhook.
 
 3.  Inspect **Recent Deliveries**.
 
@@ -773,14 +788,16 @@ the Jenkins pipeline actually starts.
     git push origin main
     ```
 
-6.  Open Jenkins and inspect **Build History**.
+6.  Open Jenkins at `http://localhost:8080`.
+
+7.  Check **Build History**.
 
 Expected result: Jenkins starts a new build after the push event is
 delivered and accepted.
 
 ### Webhook troubleshooting
 
-**GitHub delivery times out or fails** - Make sure ngrok is still
+**GitHub delivery fails or times out** - Make sure ngrok is still
 running. - Confirm the payload URL uses the current HTTPS forwarding
 URL. - Check that `/github-webhook/` is included. - Confirm Jenkins is
 reachable locally on port 8080.
@@ -791,11 +808,11 @@ points to the correct GitHub repository and `Jenkinsfile`. - Confirm the
 commit is on the configured branch. - Review Jenkins logs and build
 history.
 
-**The webhook worked earlier but stopped** - A temporary ngrok URL may
+**The webhook worked earlier but stopped** - The temporary ngrok URL may
 have changed. Update the GitHub webhook to the current URL.
 
-A webhook only triggers the pipeline. Maven, Docker, ports, and
-application errors can still cause the resulting build to fail.
+A webhook only triggers the pipeline. Maven, Docker, port binding, and
+application errors can still cause the build itself to fail.
 
 
-#
+
